@@ -10,7 +10,7 @@ class SplitEntity {
 class TransactionController {
   static async computeSplitPayments(req, res) {
     const transactionData = req.body;
-    console.log(transactionData)
+    
     try {
       const transaction = new Transaction(
         transactionData.ID,
