@@ -1,43 +1,73 @@
-const Transaction = require('../Models/Transaction');
+exports.splitPayment = (req, res, next) => {
+    let { ID, Amount, Currency, CustomerEmail, SplitInfo } = req.body;
+    SplitInfo = SplitInfo.sort((x, y) => {
+        const a = x.SplitType.toUpperCase(),
+            b = y.SplitType.toUpperCase();
+        return a == b ? 0 : a > b ? 1 : -1;
+    });
 
-class SplitEntity {
-  constructor(splitType, splitValue, splitEntityId) {
-    this.SplitType = splitType;
-    this.SplitValue = splitValue;
-    this.SplitEntityId = splitEntityId;
-  }
-}
+    const SplitBreakdown = [];
+    let ratioTotal = 0;
+    const arrayLength = SplitInfo.length;
+    Amount = parseInt(Amount);
 
-class TransactionController {
-  static computeSplitPayments(req, res) {
-    const transactionData = req.body;
-
-    try {
-      const splitEntities = transactionData.SplitInfo.map((splitData) => {
-        return new SplitEntity(splitData.SplitType, splitData.SplitValue, splitData.SplitEntityId);
-      });
-
-      const transaction = new Transaction(
-        transactionData.ID,
-        transactionData.Amount,
-        transactionData.Currency,
-        transactionData.CustomerEmail,
-        splitEntities
-      );
-
-      const splitBreakdown = transaction.computeSplitBreakdown();
-      const totalSplitAmount = splitBreakdown.reduce((acc, split) => acc + split.Amount, 0);
-      const balance = transactionData.Amount - totalSplitAmount;
-
-      res.status(200).json({
-        ID: transactionData.ID,
-        Balance: balance,
-        SplitBreakdown: splitBreakdown,
-      });
-    } catch (error) {
-      res.status(400).send(error.message);
+    if (arrayLength < 1 || arrayLength > 20) {
+        return next(
+            new Error("The SplitInfo array can only contain 1-20 entities")
+        );
     }
-  }
-}
 
-module.exports = TransactionController;
+    const ratioArray = SplitInfo.filter((SplitInfo) => {
+        const splitType = SplitInfo.SplitType.toLowerCase();
+        const splitValue = parseInt(SplitInfo.SplitValue);
+
+        if (splitType == "flat") {
+            Amount -= splitValue;
+            SplitBreakdown.push({
+                SplitEntityId: SplitInfo["SplitEntityId"],
+                Amount: splitValue,
+            });
+
+            if (Amount < 0) {
+                throw new Error(
+                    "Excessive Flat Split Value, final Balance cannot be less than 0"
+                );
+            }
+        } else if (splitType == "percentage") {
+            if (splitValue > 100) {
+                throw new Error(
+                    "Excessive percentage Split Value, final Balance cannot be less than 0"
+                );
+            }
+            const x = (splitValue / 100) * Amount;
+            SplitBreakdown.push({
+                SplitEntityId: SplitInfo["SplitEntityId"],
+                Amount: x,
+            });
+
+            Amount -= x;
+        } else {
+            ratioTotal += splitValue;
+            return true;
+        }
+        return false;
+    });
+
+    if (ratioArray.length != 0) {
+        ratioArray.every((SplitInfo) => {
+            const x = (parseInt(SplitInfo.SplitValue) / ratioTotal) * Amount;
+            SplitBreakdown.push({
+                SplitEntityId: SplitInfo["SplitEntityId"],
+                Amount: x,
+            });
+            return true;
+        });
+        Amount = 0;
+    }
+
+    res.status(200).json({
+        ID,
+        Balance: Amount,
+        SplitBreakdown,
+    });
+};
