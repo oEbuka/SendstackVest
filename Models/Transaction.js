@@ -12,11 +12,13 @@ class Transaction {
   computeSplitBreakdown() {
     const splitBreakdown = [];
     let balance = this.Amount;
+    let totalRatio = 0;
 
     for (const splitEntity of this.SplitInfo) {
+      const splitType = splitEntity.SplitType;
       let splitAmount = 0;
 
-      switch (splitEntity.SplitType) {
+      switch (splitType) {
         case 'FLAT':
           splitAmount = splitEntity.SplitValue;
           break;
@@ -24,7 +26,7 @@ class Transaction {
           splitAmount = (splitEntity.SplitValue / 100) * balance;
           break;
         case 'RATIO':
-          // Ratio computation is done at the end
+          totalRatio += splitEntity.SplitValue;
           break;
         default:
           throw new Error('Invalid split type');
@@ -46,25 +48,13 @@ class Transaction {
       });
     }
 
-    
-    if (this.SplitInfo.some((splitEntity) => splitEntity.SplitType === 'RATIO')) {
-      const totalRatio = this.SplitInfo.reduce((acc, splitEntity) => {
-        if (splitEntity.SplitType === 'RATIO') {
-          acc += splitEntity.SplitValue;
-        }
-
-        return acc;
-      }, 0);
-
-      const ratioSplitAmounts = splitBreakdown.filter((splitEntity) => splitEntity.SplitType === 'RATIO');
-
-      for (const ratioSplitEntity of ratioSplitAmounts) {
-        const ratio = ratioSplitEntity.SplitValue / totalRatio;
-        const amount = ratio * balance;
+    for (const splitEntity of splitBreakdown) {
+      if (splitEntity.SplitType === 'RATIO') {
+        const ratio = splitEntity.Amount / totalRatio;
 
         balance -= amount;
 
-        ratioSplitEntity.Amount = amount;
+        splitEntity.Amount = amount;
       }
     }
 
